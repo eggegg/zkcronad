@@ -1,0 +1,5 @@
+{
+    "dbconnection": "192.168.10.10:27017",
+    "rediscacheaddress": "127.0.0.1:6379",
+    "rediscacheaddress2": "127.0.0.1:6380"
+}
