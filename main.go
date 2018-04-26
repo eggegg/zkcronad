@@ -5,12 +5,12 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/jasonlvhit/gocron"
+	_ "github.com/jasonlvhit/gocron"
 	"github.com/urfave/cli"
-	"time"
+	_ "time"
 	"os"
-	"os/signal"
-	"syscall"
+	_ "os/signal"
+	_ "syscall"
 	"path/filepath"
 
 	
@@ -150,7 +150,7 @@ func main()  {
 		if c.String("start") == "no" {
 			log.Println("Skip start cron job")
 		} else {
-			startService(appService)
+			appService.StartService()
 		}
 
 		return nil
@@ -161,60 +161,4 @@ func main()  {
 		log.Fatal(cliErr)
 	}
 
-}
-
-
-func task(){
-	fmt.Println("I am running task")
-}
-
-func taskWithParams(a int, b string)  {
-	fmt.Println(a, b)
-}
-func refreshAll()  {
-	log.Println("Refresh all the cache")
-}
-
-func startService(appService lib.AppService)  {
-	
-	s := gocron.NewScheduler()
-	s.Every(1).Seconds().Do(appService.PreloadAdsCache)
-	s.Every(4).Seconds().Do(appService.Task1)
-
-	sc := s.Start()
-	// go test(s, sc)
-
-
-	// 接受终端停止信号
-	stop := false
-	signalChan := make(chan os.Signal, 1)
-	go func() {
-		<-signalChan
-		stop = true
-
-		// 清理所有任务
-		log.Println("Stopping...")
-		s.Remove(appService.PreloadAdsCache)
-		s.Remove(appService.Task1)
-
-		time.Sleep(8 * time.Second)
-
-		s.Clear()
-		fmt.Println("All task removed")
-		close(sc) // close the channel
-
-	}()
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
-	<- sc
-}
-
-
-func test(s *gocron.Scheduler, sc chan bool)  {
-	time.Sleep(8 * time.Second)
-    s.Remove(task) //remove task
-    time.Sleep(8 * time.Second)
-    s.Clear()
-    fmt.Println("All task removed")
-    close(sc) // close the channel
 }
