@@ -5,12 +5,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	_ "github.com/jasonlvhit/gocron"
 	"github.com/urfave/cli"
-	_ "time"
 	"os"
-	_ "os/signal"
-	_ "syscall"
 	"path/filepath"
 
 	
@@ -41,6 +37,12 @@ func getCurrentDirectory() string {
 
 func main()  {
 	
+	defer func ()  {
+		err := recover();
+		if err != nil {
+		  log.Error(err)
+		}
+	}()
 
 	// Set log
 	absdir := getCurrentDirectory();
@@ -113,13 +115,13 @@ func main()  {
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "migrate",
+			Name: "category",
 			Value: "no",
-			Usage: "Migrate data into mongo (yes/no)",
+			Usage: "refresh the category (yes/no)",
 		},
 		cli.StringFlag{
 			Name: "refresh",
-			Value: "no",
+			Value: "yes",
 			Usage:"Refresh all the cache now (yes/no)",
 		},
 		cli.StringFlag{
@@ -134,10 +136,11 @@ func main()  {
 	app.Action = func (c *cli.Context) error {
 		log.Println(c.String("refresh"), c.String("start"))
 
-		if c.String("migrate") == "no" {
+		if c.String("category") == "no" {
 			log.Println("Skip migrate data")
 		} else {
-			appService.MigrateData()
+			appService.PreloadCategoryCache(config.MysqlConnectAddr)
+			os.Exit(0)			
 		}
 
 		// check the flag value
@@ -150,6 +153,7 @@ func main()  {
 		if c.String("start") == "no" {
 			log.Println("Skip start cron job")
 		} else {
+			appService.PreloadCategoryCache(config.MysqlConnectAddr)
 			appService.StartService()
 		}
 

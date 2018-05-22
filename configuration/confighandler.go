@@ -16,6 +16,7 @@ type ServiceConfig struct {
 	DBConnection        string         `json:"dbconnection"`
 	RedisCacheAddress 	string			`json:"rediscacheaddress"`
 	RedisCacheAddress2 string 			`json:"rediscacheaddress2"`
+	MysqlConnectAddr string 			`json:"mysqlconnectaddr"`
 }
 
 func ExtractConfiguration(filename string) (ServiceConfig, error) {
@@ -23,6 +24,7 @@ func ExtractConfiguration(filename string) (ServiceConfig, error) {
 		DBConnectionDefault,
 		RedisCacheAddressDefault,
 		RedisCacheAddress2Default,
+		"",
 	}
 
 	file, err := os.Open(filename)

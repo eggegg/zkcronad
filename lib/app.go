@@ -11,7 +11,7 @@ import (
 	"time"
 	"os/signal"
 	"syscall"
-	
+
 
 )
 
@@ -27,12 +27,10 @@ func NewAppService(mode string, cache Cache, adsCache Cache,session *mgo.Session
 }
 
 // load test data 
-func (app *AppService) MigrateData()  {
-	log.Println("== AppService:MigrateData... ")
+func (app *AppService) PreloadCategoryCache(mysqlconnectaddr string) {
+	log.Println("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", mysqlconnectaddr)
 
-	values := "599405ffb09efea34c00000a"
-	err := syncByCampaignId(app.cache, app.session, values, 1)
-	log.Println(err)
+	loadCategoryFromDbToCache(app, mysqlconnectaddr)	
 
 }
 
@@ -40,19 +38,28 @@ func (app *AppService) MigrateData()  {
 func (app *AppService) PreloadAdsCache()  {
 	log.Println("== AppService:preloadAdsCache... ")
 
-	getDataFromMongo(app);
+	time.Sleep(5*time.Second)
+	log.Println("== AppService:preloadAdsCache stop sleep... ")
+	//getDataFromMongo(app);
 
+}
+
+func (app *AppService) task1(){
+	log.Println("== AppService:tast1 running ...")
+}
+
+func (app *AppService) task2(){
+	log.Println("== AppService:tast2 running ...")
 }
 
 func (app *AppService) StartService()  {
 	log.Println("== AppService:StartService... ")
 
 	s := gocron.NewScheduler()
-	s.Every(1).Seconds().Do(task1)
-	s.Every(3).Seconds().Do(task2)
+	s.Every(1).Seconds().Do(app.task1)
+	s.Every(3).Seconds().Do(app.task2)
 
 	sc := s.Start()
-	// go test(s, sc)
 
 
 	cancelChan := make(chan struct{})
@@ -72,9 +79,9 @@ func (app *AppService) StartService()  {
 
 		// 清理所有任务
 		log.Println("Stopping...")
-		s.Remove(task1)
+		s.Remove(app.task1)
 		log.Println("removed task1...")
-		s.Remove(task2)
+		s.Remove(app.task2)
 		log.Println("removed task2...")
 		
 		log.Println("close cancel channel ... ")
@@ -95,13 +102,4 @@ func (app *AppService) StartService()  {
 
 	<- sc
 
-}
-
-
-func task1(){
-	log.Println("I am running task1....")
-}
-
-func task2(){
-	log.Println("I am running task2.....")
 }

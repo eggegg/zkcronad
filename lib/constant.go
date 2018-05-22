@@ -61,6 +61,9 @@ const(
     //全部广告集合ID
     ZK_ADS_CACHE_ALL_ADS_SET = "ads_cache_all_ads_set"
 
+    //全部广告分类
+    ZK_ADS_CACHE_ALL_CATEGORY = "ads_cache_all_category"
+
     //单挑广告信息的过期时间
     ZK_ADS_CACHE_SINGLE_ADS_EXPIRE = 3300
 
@@ -70,9 +73,8 @@ const(
 
 
     //更新队列
-    ZK_ADS_SYNC_CAMPAIGN_QUEUE   = "zk_ads_sync_campaign_queue"
-    ZK_ADS_SYNC_CREATIVE_QUEUE   = "zk_ads_sync_creative_queue"
-    ZK_ADS_SYNC_ADVERTISER_QUEUE = "zk_ads_sync_advertiser_queue" 
+    ZK_ADS_SYNC_CAMPAIGN_QUEUE   = "ads_sync_campaign_queue"
+    ZK_ADS_SYNC_ADVERTISER_QUEUE = "ads_sync_advertiser_queue" 
 )
 
 
@@ -193,4 +195,9 @@ type Advertiser struct {
     Grade string `json:"grade" bson:"grade"`
     Status int `json:"status" bson:"status"`
     Parentid string `json:"parentid" bson:"parentid"`
+}
+
+type Category struct {
+    Id int `json:"id"`
+    Title string `json:"title"`
 }

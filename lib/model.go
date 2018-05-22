@@ -14,6 +14,10 @@ import (
 	redigo "github.com/garyburd/redigo/redis"
 
 	"errors"
+
+
+	"database/sql"
+	_ "github.com/go-sql-driver/mysql"
 	
 )
 
@@ -28,6 +32,14 @@ func getDataFromMongo(app *AppService)  {
 	// Redis
 	conn := app.cache.Pool.Get()
 	defer conn.Close() // 关闭cache的redis连接
+
+	// 广告缓存找出所有category
+	var allAdsCategoryMap map[string]string
+	allAdsCategoryMap, hmErr := redigo.StringMap(conn.Do("HGETALL", ZK_ADS_CACHE_ALL_CATEGORY));
+	if hmErr != nil{
+		log.Println(hmErr)
+	} 
+	log.Printf("== category map len: %v", len(allAdsCategoryMap))
 	
 	// Begin Redis Transaction
 	conn.Send("MULTI")
@@ -41,7 +53,7 @@ func getDataFromMongo(app *AppService)  {
 		nowTimeStamp = 1523849239
 	}
 
-	// BEGIN 删除状态不正常的广告缓存
+	// START 删除状态不正常的广告缓存
 	var  unNormalAid []struct {
 		Id bson.ObjectId `bson:"_id"`
 	}
@@ -54,7 +66,7 @@ func getDataFromMongo(app *AppService)  {
 	if unNormalErr != nil {
 		log.Errorf("== err searching unnormal ad: %v ", unNormalErr)
 	}
-	log.Infof("== find unnormalad num : %v", len(unNormalAid) )
+	log.Printf("== find unnormalad num : %v", len(unNormalAid) )
 	
 	if len(unNormalAid) > 0 {
 		for _, v := range unNormalAid {
@@ -63,9 +75,7 @@ func getDataFromMongo(app *AppService)  {
 	}
 	// END 删除状态不正常的广告缓存 
 
-
-
-
+	// 找出所有可用广告
 	beginTimeStamp := time.Now()
 	err := c.Find(bson.M{
 		"start_time": bson.M{"$lt": nowTimeStamp},
@@ -75,20 +85,15 @@ func getDataFromMongo(app *AppService)  {
 	}).All(&campaignSpaces)
 
 	if err != nil {
-		log.Println("== Failed get campaign:", err)
+		log.Error(err)
 	}
 	log.Println("== numbers of campaign_space: ", len(campaignSpaces), ", using :", time.Since(beginTimeStamp));
 	
+	//广告所属的广告计划ID
 	var allCampaignIds []string
 	for _, v := range campaignSpaces {
 		allCampaignIds = append(allCampaignIds, v.Ad_group_id)
-	} 
-	log.Println("== number of all campaign of all the campaign_space: ", len(allCampaignIds) )
-
-	// for v := range allCampaignIds {
-	// 	log.Printf("== %v, %T", v, v)
-	// 	// log.Printf("== all : $T, %T", k ,v)		
-	// }
+	} 	
 	campaignIds := getUniqueString(allCampaignIds)
 	log.Println("== number of unique campaign of all the campaign_space: ", len(campaignIds))
 
@@ -97,8 +102,7 @@ func getDataFromMongo(app *AppService)  {
 		campaignBsonIds = append(campaignBsonIds, bson.ObjectIdHex(id))
 	}
 	
-	// Get Campaign 
-
+	//找出所有广告计划
 	beginTimeStamp = time.Now()
 	c = session.DB("zk_dsp").C("campaign")
 	var campaigns []Campaign
@@ -120,7 +124,7 @@ func getDataFromMongo(app *AppService)  {
 	log.Println("== step2 == numbers of campaign: ", len(campaigns), ", using :", time.Since(beginTimeStamp))
 
 
-	// Get Creative
+	// 找出所有创意
 	beginTimeStamp = time.Now()
 	c = session.DB("zk_dsp").C("creative")
 	var creatives []Creative
@@ -146,10 +150,6 @@ func getDataFromMongo(app *AppService)  {
 		campaignCreatives[v.Id.Hex()] = v
 	}
 
-	// for key, value := range creativesMap {
-	// 	log.Printf("== [%v,%T] length(%v), %v,%T", key, key, len(value), value, value)
-	// }
-
 	log.Println("== step3 == numbers of creatives: ", len(creatives), ", using:", time.Since(beginTimeStamp))
 
 
@@ -161,15 +161,12 @@ func getDataFromMongo(app *AppService)  {
 
 	var oneAdsId, oneAdsCampaignId string
 	var allAdsId []string
-	// var oneAdsCampaign Campaign
-
 	adsGroup := map[string][]string{}
 	adsGroupMap := map[string]bool{}
 
 
 	for _, oneAds := range campaignSpaces {
 		// log.Printf("== %v, %T", oneAds, oneAds.Id.Hex())
-
 		oneAdsId = oneAds.Id.Hex()
 		oneAdsCampaignId = oneAds.Ad_group_id
 		allAdsId = append(allAdsId, oneAdsId)
@@ -217,18 +214,22 @@ func getDataFromMongo(app *AppService)  {
 		allAdsId = append(allAdsId, oneAdsId)
 
 		//创意
-		// log.Infof("== find creatives of : %v", oneAdsCampaignId)
 		oneCreatives, ok := creativesMap[oneAdsCampaignId]
 		if ok == true {
-			// log.Infof("== find creative: %v, %T, %v", oneCreatives, oneCreatives, len(oneCreatives))
+			log.Printf("== find creative num: %v", len(oneCreatives))
 			oneAds.Creatives = oneCreatives
 		} else {
 			//没有广告创意的不加载
 			continue
 		}
 
-		//58同城的广告集合
 		//将广告所属小类加入广告标签
+		if len(oneAds.Category) > 0  {
+			oneAdCategory, ok := allAdsCategoryMap[oneAds.Category]
+			if ok == true {
+				oneAds.Tags = append(oneAds.Tags, oneAdCategory)
+			}
+		}
 
 		//设置单条缓存和过期时间
 		oneAdsJson, err := json.Marshal(oneAds)	
@@ -241,7 +242,7 @@ func getDataFromMongo(app *AppService)  {
 
 		//按条件设置缓存
 		setKeys := getPreloadRedisKeys(&oneAds)
-		// log.Infof("== >>> get setkeys of :%v, len(%v)", oneAdsId, len(setKeys))
+		log.Printf(">>> get setkeys of :%v, len(%v)", oneAdsId, len(setKeys))
 
 		for _, value := range setKeys {
 			_, ok := adsGroupMap[value] 
@@ -253,15 +254,9 @@ func getDataFromMongo(app *AppService)  {
 			}
 		}
 
-		// log.Printf("== oneAds info : %v, %T", oneAds, oneAds)
 	}
 
 	log.Println("=== finish adsGroup : %v, %v", len(adsGroup), len(adsGroupMap))
-
-	// for _, value := range adsGroup {
-	// 	log.Printf("== key for the : %v", value)
-	// }
-
 
 	//先删除再设置全部广告ID缓存
 	conn.Send("DEL", ZK_ADS_CACHE_ALL_ADS_SET)
@@ -426,12 +421,11 @@ func getDataFromMongo(app *AppService)  {
 
 			
 			if len(stat.Daily_shows) > 0 {
-				// log.Infof("== %v, daily_show: %v", stat.Creative_id,stat.Daily_shows)
 				//获取最近三日的曝光和统计
 				for _, day := range dayKeys {
 					count, ok := stat.Daily_shows[day]; 
 					if ok==true && count > 0 {
-						// log.Printf("== found show for key %v, value: %v", day, count)
+						log.Printf("== found show for key %v, value: %v", day, count)
 						dailyShowKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_CREATIVE_SHOW_COUNT, stat.Creative_id, "_", day}, ""), "cs_", 16)
 						adsConn.Send("SETEX", dailyShowKey, ZK_ADS_ADS_CACHE_EXPIRE, count)
 					}
@@ -441,7 +435,7 @@ func getDataFromMongo(app *AppService)  {
 				for _, day := range dayKeys {
 					count, ok := stat.Daily_clicks[day]; 
 					if ok == true && count > 0{
-						// log.Printf("== found click for key %v, value: %v", day, count)
+						log.Printf("== found click for key %v, value: %v", day, count)
 						dailyClickKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_CREATIVE_CLICK_COUNT}, ""), "cs_", 16)
 						adsConn.Send("SETEX", dailyClickKey, ZK_ADS_ADS_CACHE_EXPIRE, count)
 					}
@@ -464,7 +458,6 @@ func getDataFromMongo(app *AppService)  {
 	advCacheKey := strings.Replace(ZK_DSP_CACHE_ADVERTISER_DATA, "{id}", "", 1)
 	
 	for _, adv := range advertisers {
-		// log.Printf("== adv: %v, %T", adv, adv)
 		oneAdvJson, err := json.Marshal(adv)	
 		if err != nil {
 			log.Error("== failed encode json of advtiser:", adv.Id.Hex())
@@ -472,7 +465,6 @@ func getDataFromMongo(app *AppService)  {
 		adsConn.Send("SETEX", strings.Join([]string{advCacheKey, adv.Id.Hex()}, ""), 86400, oneAdvJson)
 	}
 	
-
 	// 批量执行
 	_, err = adsConn.Do("EXEC")
 	if err != nil {
@@ -565,7 +557,6 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 	if err != nil {
 		return errors.New("cannot found campiagn ")
 	}
-	// log.Printf("== get campaign: %v", campaign)
 
 	// Campaign space
 	c = db.DB("zk_dsp").C("campaign_space")
@@ -599,6 +590,9 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 		}	
 	}
 	
+	//找出该广告的分类
+	oneAdsCategory, _ := redigo.String(conn.Do("HGET", ZK_ADS_CACHE_ALL_CATEGORY, campaign.Category)) 
+		
 
 	// Begin Redis Transaction
 	conn.Send("MULTI")
@@ -644,6 +638,9 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 		oneAds.Creatives = campaignCreatives
 
 		//将广告所属小类加入广告标签
+		if len(oneAdsCategory) > 0 {
+			oneAds.Tags = append(oneAds.Tags, oneAdsCategory)
+		}
 
 		//设置单条缓存和过期时间
 		oneAdsJson, err := json.Marshal(oneAds)	
@@ -774,4 +771,52 @@ func getCampaignSpaceByIds(cache Cache , ids []string) ( map[string]CampaignSpac
 	}
 
 	return ads, nil
+}
+
+
+//加载mysql的category到缓存
+func loadCategoryFromDbToCache(app *AppService, mysqlconnectaddr string)  {
+
+	conn := app.cache.Pool.Get()
+	defer conn.Close()
+
+	db, err := sql.Open("mysql", mysqlconnectaddr)
+    if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	
+	results, err := db.Query("SELECT id, title FROM category")
+	if err != nil {
+		panic(err)
+	}
+
+	var args []interface{}
+	args = append(args, ZK_ADS_CACHE_ALL_CATEGORY)
+	
+	for results.Next() {
+		var category Category
+		// for each row, scan the result into our tag composite object
+		err = results.Scan(&category.Id, &category.Title)
+		if err != nil {
+			panic(err)
+		}		
+		args = append(args, category.Id, category.Title)
+	}
+
+	// log.Printf("== args: %v",args)
+	
+	//HMSET
+	_, err = conn.Do("HMSET", args...)
+	if err != nil {
+		panic(err)
+	}
+	// Never expire
+	conn.Do("PERSIST", ZK_ADS_CACHE_ALL_CATEGORY)
+
+
+	log.Printf("== load category to redis successfully...")
+
+	return
+
 }

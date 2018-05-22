@@ -70,7 +70,7 @@ func (cache *Cache) setValue(key interface{}, value interface{}) error {
 	return err
 }
 
-func (cache *Cache) enqueueValue(queue string, uuid int) error {
+func (cache *Cache) enqueueValue(queue string, uuid string) error {
 	conn := cache.Pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("RPUSH", queue, uuid)

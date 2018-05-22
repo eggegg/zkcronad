@@ -1,10 +1,10 @@
 package lib
 
 import (
-	"time"
+	_ "time"
 	"log"
 	mgo "gopkg.in/mgo.v2"
-	_ "github.com/garyburd/redigo/redis"	
+	redigo "github.com/garyburd/redigo/redis"	
 
 	"sync"
 )
@@ -28,34 +28,39 @@ func (w Worker) process(id int) {
 		log.Printf("worker(%v) defer..", id)
 	}()
 
+	log.Printf("worker(%v) start working...", id)
+
 	for {
-		// conn := w.cache.Pool.Get()
-		// var channel string
-		// var uuid int
-		// if reply, err := redigo.Values(conn.Do("BLPOP", w.queue,30+id)); err == nil {
+		conn := w.cache.Pool.Get()
+		var channel string
+		var uuid string
 
-		// 	if _, err := redigo.Scan(reply, &channel, &uuid); err != nil {
-		// 		w.cache.enqueueValue(w.queue, uuid)
-		// 		continue
-		// 	}
+		log.Printf("worker(%v) start check redis: %v", id ,w.queue)
+		if reply, err := redigo.Values(conn.Do("BLPOP", w.queue,30+id)); err == nil {
+			if _, err := redigo.Scan(reply, &channel, &uuid); err != nil {
+				w.cache.enqueueValue(w.queue, uuid)
+				continue
+			}
 
-		// 	values, err := redigo.String(conn.Do("GET", uuid))
-		// 	if err != nil {
-		// 		w.cache.enqueueValue(w.queue, uuid)
-		// 		continue
-		// 	}
+			log.Printf("worker(%v) get queue: %v", id ,uuid)
+			// values, err := redigo.String(conn.Do("GET", uuid))
+			// if err != nil {
+			// 	w.cache.enqueueValue(w.queue, uuid)
+			// 	continue
+			// }
 
-		// 	if err := syncByAdvertiserId(w.cache, w.session, values, w.id); err != nil {
-		// 		w.cache.enqueueValue(w.queue, uuid)
-		// 		continue
-		// 	}
+			// if err := syncByAdvertiserId(w.cache, w.session, values, w.id); err != nil {
+			// 	w.cache.enqueueValue(w.queue, uuid)
+			// 	continue
+			// }
 
-		// } else if err != redigo.ErrNil {
-		// 	log.Fatal(err)
-		// }
-		// conn.Close()
-		log.Printf("worker(%v) is running..", id)
-		time.Sleep(2 * time.Second)
+		} else if err != redigo.ErrNil {
+			log.Fatal(err)
+		}
+		conn.Close()
+		
+		// log.Printf("worker(%v) is running..", id)
+		// time.Sleep(2 * time.Second)
 
 		// Listen for the cancel channel
 		select {
@@ -71,7 +76,6 @@ func (w Worker) process(id int) {
 func SyncAdJob(cancelChan  <-chan struct{}, numWorkers int, cache Cache, session *mgo.Session, queue string)  {
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
-		log.Println("wg add 1")
 		wg.Add(1)
 		go func(cancelChan <-chan struct{}, id int, cache Cache, session *mgo.Session, queue string){
 			worker := newWorker(cancelChan, cache, session, id, queue)
