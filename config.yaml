@@ -1,0 +1,7 @@
+dbconnection: "192.168.10.10:27017"
+dbconnectionthird: "192.168.10.10:27017"
+rediscacheaddress: "127.0.0.1:6379"
+rediscacheaddress2: "127.0.0.1:6380"
+mysqlconnectaddr: "homestead:secret@tcp(127.0.0.1:33060)/zk_dsp"
+workernum: 1
+pid: adcron.pid

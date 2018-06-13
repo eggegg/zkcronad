@@ -11,6 +11,7 @@ import (
 	"time"
 	"os/signal"
 	"syscall"
+	"fmt"
 
 
 )
@@ -20,27 +21,35 @@ type AppService struct {
 	cache Cache //cache
 	adsCache Cache //ads_cache
 	session *mgo.Session
+	workernum int
 }
 
-func NewAppService(mode string, cache Cache, adsCache Cache,session *mgo.Session) AppService {
-	return AppService{mode: mode, cache: cache, adsCache: adsCache, session: session}
+func NewAppService(mode string, cache Cache, adsCache Cache,session *mgo.Session, workernum int) AppService {
+	return AppService{mode: mode, cache: cache, adsCache: adsCache, session: session, workernum: workernum }
 }
 
-// load test data 
+// 加载广告category 
 func (app *AppService) PreloadCategoryCache(mysqlconnectaddr string) {
-	log.Println("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", mysqlconnectaddr)
+
+	log.Info("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", mysqlconnectaddr)
 
 	loadCategoryFromDbToCache(app, mysqlconnectaddr)	
-
 }
 
-// load all the ads cache 
-func (app *AppService) PreloadAdsCache()  {
-	log.Println("== AppService:preloadAdsCache... ")
+func (app *AppService) PreloadThirdPartyAdCache(dbconnection string)  {
+	log.Info("== AppService: PreloadThirdPartyAdCache, mongoaddress:", dbconnection)
 
-	time.Sleep(5*time.Second)
-	log.Println("== AppService:preloadAdsCache stop sleep... ")
-	//getDataFromMongo(app);
+	loadThirdPartyFromDbToCache(app, dbconnection)
+}
+
+// 刷新广告缓存
+func (app *AppService) PreloadAdsCache()  {
+	log.Info("== AppService:preloadAdsCache begin ... ")
+
+	// time.Sleep(5*time.Second)
+	getDataFromMongo(app);
+
+	log.Info("== AppService:preloadAdsCache finish ... ")
 
 }
 
@@ -52,24 +61,29 @@ func (app *AppService) task2(){
 	log.Println("== AppService:tast2 running ...")
 }
 
+// 开启定时任务
 func (app *AppService) StartService()  {
+
 	log.Println("== AppService:StartService... ")
 
 	s := gocron.NewScheduler()
-	s.Every(1).Seconds().Do(app.task1)
-	s.Every(3).Seconds().Do(app.task2)
+
+	//设置定时任务
+	// s.Every(5).Seconds().Do(app.task1)
+	s.Every(300).Seconds().Do(app.PreloadAdsCache)
 
 	sc := s.Start()
 
-
+	// channel for cancel
 	cancelChan := make(chan struct{})
 
-	numberOfWorkers := 2
-
-	// Worker running
+	// 开启处理广告更新队列的worker，数量为配置的workernum
+	numberOfWorkers := app.workernum
+	// 同步广告计划的worker
 	go SyncAdJob(cancelChan, numberOfWorkers, app.cache, app.session, ZK_ADS_SYNC_CAMPAIGN_QUEUE)
-
-
+	// 同步广告主的worker
+	go SyncAdJob(cancelChan, 1, app.cache, app.session, ZK_ADS_SYNC_ADVERTISER_QUEUE)
+	
 	// 接受终端停止信号
 	stop := false
 	signalChan := make(chan os.Signal, 1)
@@ -78,27 +92,29 @@ func (app *AppService) StartService()  {
 		stop = true
 
 		// 清理所有任务
-		log.Println("Stopping...")
+		fmt.Println("Stopping...")
 		s.Remove(app.task1)
 		log.Println("removed task1...")
-		s.Remove(app.task2)
-		log.Println("removed task2...")
+		s.Remove(app.PreloadAdsCache)
+		log.Println("removed preloadAdsCache...")
 		
+		//发送cancel信号，停用worker
 		log.Println("close cancel channel ... ")
 		close(cancelChan)
 
-		log.Println("waiting for 8 seconds ...")
+		//等待8秒，让正在执行的任务执行完毕
+		fmt.Println("waiting for 8 seconds ...")
 		time.Sleep(8 * time.Second)
 
-		log.Println("gocron clear...")
+		//清理计划任务并退出程序
+		fmt.Println("gocron clear...")
 		s.Clear()
 		
-		log.Println("All task removed.....")
+		fmt.Println("All task removed.....")
 		close(sc) // close the channel
 
 	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
 
 	<- sc
 

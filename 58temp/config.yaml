@@ -1,0 +1,7 @@
+dbconnection: "192.168.88.197:27017"
+dbconnectionthird: "192.168.88.40:27017"
+rediscacheaddress: "192.168.88.20:6379"
+rediscacheaddress2: "192.168.88.20:6379"
+mysqlconnectaddr: "production:3GCTfWYbP0KV@tcp(192.168.88.20:3306)/zk_dsp"
+workernum: 1
+pid: adcron.pid

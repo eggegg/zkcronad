@@ -64,8 +64,11 @@ const(
     //全部广告分类
     ZK_ADS_CACHE_ALL_CATEGORY = "ads_cache_all_category"
 
-    //单挑广告信息的过期时间
+    //单条广告信息的过期时间
     ZK_ADS_CACHE_SINGLE_ADS_EXPIRE = 3300
+
+    //广告属性集合过期时间
+    ZK_ADS_CACHE_SINGLE_SET_KEY= 600
 
     ZK_ADS_CACHE_CREATIVE_SHOW_COUNT = "ads_cache_creative_show_count_"
 
@@ -75,6 +78,11 @@ const(
     //更新队列
     ZK_ADS_SYNC_CAMPAIGN_QUEUE   = "ads_sync_campaign_queue"
     ZK_ADS_SYNC_ADVERTISER_QUEUE = "ads_sync_advertiser_queue" 
+
+
+    //第三方渠道白名单广告
+    ZK_ADS_CACHE_THIRD_PARTY_OUTPUT_SET = "ads_cache_third_party_output_set_"
+
 )
 
 
@@ -154,6 +162,8 @@ type Campaign struct {
     Third_views_url string `json:"third_views_url" bson:"third_views_url"`                 //第三方曝光监测地址
     Tracker_url string `json:"tracker_url" bson:"tracker_url"`                         //第三方点击监测地址
     Web_target string `json:"web_target" bson:"web_target"`                           //打开连接方式，web或safari
+
+    For_third_party []string `json:"for_third_party" bson:"for_third_party,omitempty"`
 }
 
 type CampaignSpace struct {
@@ -174,7 +184,7 @@ type CampaignSpace struct {
 type AdsStat struct {
     Ads_id string `bson:"ads_id"`
     Show_count int `bson:"showCount"`
-    Click_count int `bons:"clickCount"`
+    Click_count int `bson:"clickCount"`
     Daily_shows  map[string]int `bson:"daily_shows"`
     Daily_clicks map[string]int `bson:"daily_clicks"`
 }
@@ -183,7 +193,7 @@ type AdsStat struct {
 type CreativeStat struct {
     Creative_id string `bson:"creativeid"`
     Show_count int `bson:"showCount"`
-    Click_count int `bons:"clickCount"`
+    Click_count int `bson:"clickCount"`
     Daily_shows  map[string]int `bson:"daily_shows"`
     Daily_clicks map[string]int `bson:"daily_clicks"`
 }
@@ -200,4 +210,9 @@ type Advertiser struct {
 type Category struct {
     Id int `json:"id"`
     Title string `json:"title"`
+}
+
+type ThirdOutput struct {
+    Campaignids []string `json:"ids" bson:"campaignids"`
+    DeviceId string `json:"deviceid" bson:"deviceid"`
 }

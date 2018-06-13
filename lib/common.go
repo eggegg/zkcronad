@@ -8,7 +8,7 @@ import (
 
 
 
-// get unique of string slice
+// 字符串slice排重
 func getUniqueString(input []string) []string {
 	u := make([]string, 0, len(input))
 	m := make(map[string]bool)
@@ -23,6 +23,7 @@ func getUniqueString(input []string) []string {
 	return u
 }
 
+// 判断slice是否包含string
 func stringInSlice(str string, list []string) bool {
 	for _, v := range list {
 		if v == str {
@@ -32,11 +33,11 @@ func stringInSlice(str string, list []string) bool {
 	return false
 }
 
-//
+// 获取zaker的redis加密key字符串
 func adsCacheGetKey(key string, prefix string, length int)  string{
 	md5Key := GetMD5Hash(key)
-	if len(md5Key) > 5 && len(md5Key) < 32 {
-		return md5Key[0:length]
+	if length > 5 && length < 32 {
+		md5Key = md5Key[0:length]
 	} 
 	return strings.Join([]string{prefix, md5Key}, "")
 }

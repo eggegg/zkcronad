@@ -1,27 +1,68 @@
 package main
 
 import (
+	"time"
 	"fmt"
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/urfave/cli"
 	"os"
 	"path/filepath"
 
+	"gopkg.in/yaml.v2"
+	"io/ioutil"	
+	"strconv"
 	
 	mgo "gopkg.in/mgo.v2"
 	_ "gopkg.in/mgo.v2/bson"
 
-	"github.com/eggegg/zkcronad/configuration"
 	"github.com/eggegg/zkcronad/lib"
 )
 
 // 常量
 const (
-	Environment = "development"
+	Environment = "production"
 )
 
+//配置文件
+type conf struct {
+	Dbconnection string `yaml:"dbconnection"`
+	Dbconnectionthird string `yaml:"dbconnectionthird"`
+	Rediscacheaddress string `yaml:"rediscacheaddress"`
+	Rediscacheaddress2 string `yaml:"rediscacheaddress2"`
+	Mysqlconnectaddr string `yaml:"mysqlconnectaddr"`
+	Workernum int `yaml:"workernum"`
+	Pid string `yaml:"pid"`
+}
+
+//读取配置文件，并且写入pid至pid文件
+func (c *conf) getConf() *conf {
+	
+		absdir := getCurrentDirectory();
+		log.Println(absdir)
+	
+		yamlFile, err := ioutil.ReadFile(absdir+"/config.yaml")
+		if err != nil {
+			log.Fatal(fmt.Sprintf("yamlFile.Get err   #%v ", err) )
+		}
+		err = yaml.Unmarshal(yamlFile, c)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Unmarshal: %v", err) )
+		}
+	
+		log.Info("pid:",os.Getpid())
+	
+		pidPath := c.Pid
+		pid :=  os.Getpid()
+	
+		err = ioutil.WriteFile(absdir+"/"+pidPath,[]byte(strconv.Itoa(pid)), 0644)
+		if err != nil {
+		  log.Info("error write pid to config file")//TODO
+		}
+		return c
+}
+
+//获取当前目录
 func getCurrentDirectory() string {
     if Environment == "development" {
       return "."
@@ -30,22 +71,23 @@ func getCurrentDirectory() string {
     if err != nil {
         log.Fatal(err)
     }
-    // return strings.Replace(dir, "\\", "/", -1)
     return dir
 
 }
 
-func main()  {
-	
-	defer func ()  {
-		err := recover();
-		if err != nil {
-		  log.Error(err)
-		}
-	}()
+
+func main()  {	
 
 	// Set log
 	absdir := getCurrentDirectory();
+
+	//加载配置文件里的配置
+	var config conf
+	config.getConf()
+
+	log.Infof("config: %v", config)
+
+	//日志文件设置
 	logdir := absdir+"/log/zkcronad.log"
 	log.Info("logdir:",logdir)
 
@@ -53,37 +95,38 @@ func main()  {
 	if err != nil {
 		fmt.Printf("error opening file: %v", err)
 	}
-	// don't forget to close it
 	defer f.Close()	
+
+
+	defer func ()  {
+		err := recover();
+		if err != nil {
+		  log.Fatalln(err)
+		}
+	}()
+
 
 	//根据环境加载设定log等级
 	if Environment == "production" {
 		// Log as JSON instead of the default ASCII formatter.
 		log.SetFormatter(&log.JSONFormatter{})
 		// Output to stderr instead of stdout, could also be a file.
-		log.SetOutput(f)
+		// log.SetOutput(f)
 		// Only log the warning severity or above.
-		log.SetLevel(log.ErrorLevel)
+		log.SetLevel(log.DebugLevel)
 	  } else {
 		// The TextFormatter is default, you don't actually have to do this.
 		log.SetFormatter(&log.TextFormatter{})
 	
 		log.SetLevel(log.DebugLevel)
 	  }
-
-	// load config file and extract configuration
-	confPath := "./configuration/config.json"
-	config, _ := configuration.ExtractConfiguration(confPath)
-
-	log.Printf("config: %v", config)
 	  
-
-	// init redis 
+	// 初始化redis 
 	cache := lib.Cache{
 		MaxIdle: 100,
 		MaxActive: 100,
 		IdleTimeoutSecs: 60,
-		Address: config.RedisCacheAddress,
+		Address: config.Rediscacheaddress,
 	}
 	cache.Pool = cache.NewCachePool()
 
@@ -91,78 +134,47 @@ func main()  {
 		MaxIdle: 100,
 		MaxActive: 100,
 		IdleTimeoutSecs: 60,
-		Address: config.RedisCacheAddress2,
+		Address: config.Rediscacheaddress2,
 	}
 	cache2.Pool = cache2.NewCachePool()
 
-	// init mongodb
-	session, err := mgo.Dial(config.DBConnection)
+	log.Infoln("== Redis Connect Ok ....")
+
+
+	// 初始化mongodb
+	host := []string{
+		config.Dbconnection,
+	}
+	session, err := mgo.DialWithInfo(&mgo.DialInfo{
+		Addrs: host,
+		Direct: true,
+		Timeout: 5 * time.Second,
+	})
+	session.SetMode(mgo.Monotonic, true)
 	if err != nil {
+		log.Infoln("cannot connect to :" + config.Dbconnection)
 		panic(err)
 	}
 	defer session.Close()
 
-	session.SetMode(mgo.Monotonic, true)
-
-	// Init AppService
-	appService := lib.NewAppService(Environment ,cache, cache2, session)
-
-	log.Printf("appService: %v", appService)
-
+	log.Infoln("== Mongodb Connect Ok ....")
 	
 
-	// cli app set
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name: "category",
-			Value: "no",
-			Usage: "refresh the category (yes/no)",
-		},
-		cli.StringFlag{
-			Name: "refresh",
-			Value: "yes",
-			Usage:"Refresh all the cache now (yes/no)",
-		},
-		cli.StringFlag{
-			Name: "start",
-			Value: "no",
-			Usage: "Start cron job (yes/no)",
-		},
-	}
+	// 初始化AppService
+	appService := lib.NewAppService(Environment ,cache, cache2, session, config.Workernum)
+	log.Infof("appService: %v", appService)
 
-	app.Version = "1.0"
-	// define action
-	app.Action = func (c *cli.Context) error {
-		log.Println(c.String("refresh"), c.String("start"))
+	// 加载广告分类category
+	appService.PreloadCategoryCache(config.Mysqlconnectaddr)	
+	// 加载第三方广告到缓存
+	appService.PreloadThirdPartyAdCache(config.Dbconnectionthird)
 
-		if c.String("category") == "no" {
-			log.Println("Skip migrate data")
-		} else {
-			appService.PreloadCategoryCache(config.MysqlConnectAddr)
-			os.Exit(0)			
-		}
+	// 刷新广告缓存
+	appService.PreloadAdsCache()
 
-		// check the flag value
-		if c.String("refresh") == "no" {
-			log.Println("Skip refresh all cache")
-		} else {
-			appService.PreloadAdsCache()
-		}
-
-		if c.String("start") == "no" {
-			log.Println("Skip start cron job")
-		} else {
-			appService.PreloadCategoryCache(config.MysqlConnectAddr)
-			appService.StartService()
-		}
-
-		return nil
-	}
-
-	cliErr := app.Run(os.Args)
-	if cliErr != nil {
-		log.Fatal(cliErr)
-	}
+	//启动worker，加载cronjob
+	appService.StartService()
+		
+	log.Info("== main func end ...")
 
 }

@@ -24,7 +24,7 @@ func main() {
 	db.Ping()
 	defer db.Close()
 	
-	results, err := db.Query("SELECT id, title FROM category")
+	results, err := db.Query("SELECT id, title FROM mini_apps_option")
 	if err != nil {
 		panic(err.Error()) // proper error handling instead of panic in your app
 	}
