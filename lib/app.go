@@ -33,7 +33,9 @@ func (app *AppService) PreloadCategoryCache(mysqlconnectaddr string) {
 
 	log.Info("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", mysqlconnectaddr)
 
+	fromTimestamp := time.Now()
 	loadCategoryFromDbToCache(app, mysqlconnectaddr)	
+	log.Warnf("== AppService:PreloadCategoryCache finish, Using %v seconds", time.Since(fromTimestamp).Seconds())
 }
 
 func (app *AppService) PreloadThirdPartyAdCache(dbconnection string)  {
@@ -46,10 +48,10 @@ func (app *AppService) PreloadThirdPartyAdCache(dbconnection string)  {
 func (app *AppService) PreloadAdsCache()  {
 	log.Info("== AppService:preloadAdsCache begin ... ")
 
-	// time.Sleep(5*time.Second)
+	fromTimestamp := time.Now()
 	getDataFromMongo(app);
-
-	log.Info("== AppService:preloadAdsCache finish ... ")
+	
+	log.Warnf("== AppService:preloadAdsCache finish, Using %v seconds", time.Since(fromTimestamp).Seconds())
 
 }
 
