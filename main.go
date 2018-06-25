@@ -16,7 +16,6 @@ import (
 	mgo "gopkg.in/mgo.v2"
 	_ "gopkg.in/mgo.v2/bson"
 
-	"github.com/eggegg/zkcronad/lib"
 )
 
 // 常量
@@ -111,18 +110,18 @@ func main()  {
 		// Log as JSON instead of the default ASCII formatter.
 		log.SetFormatter(&log.JSONFormatter{})
 		// Output to stderr instead of stdout, could also be a file.
-		// log.SetOutput(f)
+		log.SetOutput(f)
 		// Only log the warning severity or above.
-		log.SetLevel(log.DebugLevel)
+		log.SetLevel(log.WarnLevel)
 	  } else {
 		// The TextFormatter is default, you don't actually have to do this.
 		log.SetFormatter(&log.TextFormatter{})
 	
-		log.SetLevel(log.DebugLevel)
+		log.SetLevel(log.InfoLevel)
 	  }
 	  
 	// 初始化redis 
-	cache := lib.Cache{
+	cache := Cache{
 		MaxIdle: 100,
 		MaxActive: 100,
 		IdleTimeoutSecs: 60,
@@ -130,7 +129,7 @@ func main()  {
 	}
 	cache.Pool = cache.NewCachePool()
 
-	cache2 := lib.Cache{
+	cache2 := Cache{
 		MaxIdle: 100,
 		MaxActive: 100,
 		IdleTimeoutSecs: 60,
@@ -161,15 +160,18 @@ func main()  {
 	
 
 	// 初始化AppService
-	appService := lib.NewAppService(Environment ,cache, cache2, session, config.Workernum)
+	appService := NewAppService(Environment ,cache, cache2, session, config.Workernum, config.Mysqlconnectaddr, config.Dbconnectionthird)
 	log.Infof("appService: %v", appService)
 
-	// 加载广告分类category
-	appService.PreloadCategoryCache(config.Mysqlconnectaddr)	
-	// 加载第三方广告到缓存
-	appService.PreloadThirdPartyAdCache(config.Dbconnectionthird)
 
-	// 刷新广告缓存
+	// 这两个方法需要预先加载一些缓存，所以启动的时候要运行
+
+	// 加载广告分类category
+	appService.PreloadCategoryCache()	
+	// 加载第三方广告到缓存
+	appService.PreloadThirdPartyAdCache()
+
+	// 刷新广告缓存,这里可以不运行，startservice里面启动的定时任务会运行
 	appService.PreloadAdsCache()
 
 	//启动worker，加载cronjob

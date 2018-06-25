@@ -1,4 +1,4 @@
-package lib
+package main
 
 import (
 	"gopkg.in/mgo.v2/bson"
@@ -89,11 +89,11 @@ const(
 //广告创意
 type Creative struct{
     Id bson.ObjectId `json:"_id" bson:"_id,omitempty"`   //创意ID
-    Idm string `json:"id" bson:"id"`                              //创意ID
+    // Idm string `json:"id" bson:"id"`                              //创意ID
     Title string `json:"title" bson:"title"`                         //标题
     Ads_pic string `json:"ads_pic" bson:"ads_pic"`                     //大图
     Ads_short_pic string `json:"ads_short_pic" bson:"ads_short_pic"`         //小图
-    Multi_pics []string `json:"multi_pics" bson:"multi_pics"`             //组图
+    Multi_pics []string `json:"multi_pics,omitempty" bson:"multi_pics,omitempty"`             //组图
     Aid string `json:"aid" bson:"aid"`                             //广告主ID
     Campaignid string `json:"campaignid" bson:"campaignid"`               //广告计划ID
     Ads_type int `json:"ads_type" bson:"ads_type"`                      //广告样式ID
@@ -162,6 +162,22 @@ type Campaign struct {
     Third_views_url string `json:"third_views_url" bson:"third_views_url"`                 //第三方曝光监测地址
     Tracker_url string `json:"tracker_url" bson:"tracker_url"`                         //第三方点击监测地址
     Web_target string `json:"web_target" bson:"web_target"`                           //打开连接方式，web或safari
+
+
+    Output_percent int `json:"output_percent,omitempty" bson:"output_percent,omitempty"`  
+    Output_ratio int `json:"output_ratio,omitempty" bson:"output_ratio,omitempty"`            
+    Output_partners []string `json:"output_partners,omitempty" bson:"output_partners,omitempty"` 
+    App_partners_ratio map[string]float64  `json:"app_partners_ratio,omitempty" bson:"app_partners_ratio,omitempty"` 
+    
+
+    Apk_name string `json:"apk_name,omitempty" bson:"apk_name,omitempty"`
+    Click_urls []string `json:"click_urls,omitempty" bson:"click_urls,omitempty"`
+    Zk_pk string `json:"zk_pk,omitempty" bson:"zk_pk,omitempty"`
+
+    For_device_ids []string `json:"for_device_ids,omitempty" bson:"for_device_ids,omitempty"`
+    Expend_ratio []string `json:"expend_ratio,omitempty" bson:"expend_ratio,omitempty"`
+    
+    
 
     For_third_party []string `json:"for_third_party" bson:"for_third_party,omitempty"`
 }

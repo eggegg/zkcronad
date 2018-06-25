@@ -1,4 +1,4 @@
-package lib
+package main
 
 import (
 	log "github.com/Sirupsen/logrus"
@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"fmt"
 
+	"net/http"
+
 
 )
 
@@ -22,26 +24,34 @@ type AppService struct {
 	adsCache Cache //ads_cache
 	session *mgo.Session
 	workernum int
+	mysqlconnectaddr string
+	dbconnectionthird string
+	refCount int //监控数据
+	refLastTime time.Time
+	refLastUsing float64
 }
 
-func NewAppService(mode string, cache Cache, adsCache Cache,session *mgo.Session, workernum int) AppService {
-	return AppService{mode: mode, cache: cache, adsCache: adsCache, session: session, workernum: workernum }
+func NewAppService(mode string, cache Cache, adsCache Cache,session *mgo.Session, workernum int, mysqlconnectaddr string,dbconnectionthird string ) AppService {
+	return AppService{mode: mode, cache: cache, adsCache: adsCache, session: session, workernum: workernum, mysqlconnectaddr: mysqlconnectaddr, dbconnectionthird:dbconnectionthird }
 }
 
 // 加载广告category 
-func (app *AppService) PreloadCategoryCache(mysqlconnectaddr string) {
+func (app *AppService) PreloadCategoryCache() {
 
-	log.Info("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", mysqlconnectaddr)
+	log.Info("== AppService: PreloadCategoryCache, mysqlconnectaddr ,", app.mysqlconnectaddr)
 
 	fromTimestamp := time.Now()
-	loadCategoryFromDbToCache(app, mysqlconnectaddr)	
+	loadCategoryFromDbToCache(app)	
 	log.Warnf("== AppService:PreloadCategoryCache finish, Using %v seconds", time.Since(fromTimestamp).Seconds())
 }
 
-func (app *AppService) PreloadThirdPartyAdCache(dbconnection string)  {
-	log.Info("== AppService: PreloadThirdPartyAdCache, mongoaddress:", dbconnection)
+func (app *AppService) PreloadThirdPartyAdCache()  {
+	log.Info("== AppService: PreloadThirdPartyAdCache, mongoaddress:", app.dbconnectionthird)
 
-	loadThirdPartyFromDbToCache(app, dbconnection)
+	fromTimestamp := time.Now()
+	loadThirdPartyFromDbToCache(app)
+	log.Warnf("== AppService:PreloadThirdPartyAdCache finish, Using %v seconds", time.Since(fromTimestamp).Seconds())
+	
 }
 
 // 刷新广告缓存
@@ -51,6 +61,10 @@ func (app *AppService) PreloadAdsCache()  {
 	fromTimestamp := time.Now()
 	getDataFromMongo(app);
 	
+	app.refCount++
+	app.refLastTime = time.Now()
+	app.refLastUsing = time.Since(fromTimestamp).Seconds()
+
 	log.Warnf("== AppService:preloadAdsCache finish, Using %v seconds", time.Since(fromTimestamp).Seconds())
 
 }
@@ -63,15 +77,31 @@ func (app *AppService) task2(){
 	log.Println("== AppService:tast2 running ...")
 }
 
+func healthCheckHandler(w http.ResponseWriter, r *http.Request)  {
+	fmt.Fprintf(w, "service is running.....")
+}
+
+func (app *AppService) Monitor(w http.ResponseWriter, r *http.Request)  {
+	fmt.Fprintf(w, "Service run count : %d, last refresh time : %v, using %v seconds", app.refCount, app.refLastTime.Format("2006-01-02 15:04:05"), app.refLastUsing)
+}
+
 // 开启定时任务
 func (app *AppService) StartService()  {
 
 	log.Println("== AppService:StartService... ")
 
+	go func(){
+		http.HandleFunc("/health_check", healthCheckHandler)
+		http.HandleFunc("/monit", app.Monitor)
+		http.ListenAndServe(":8080", nil)
+	}()
+
 	s := gocron.NewScheduler()
 
 	//设置定时任务
 	// s.Every(5).Seconds().Do(app.task1)
+	s.Every(600).Seconds().Do(app.PreloadCategoryCache)
+	s.Every(600).Seconds().Do(app.PreloadThirdPartyAdCache)	
 	s.Every(300).Seconds().Do(app.PreloadAdsCache)
 
 	sc := s.Start()
@@ -97,6 +127,10 @@ func (app *AppService) StartService()  {
 		fmt.Println("Stopping...")
 		s.Remove(app.task1)
 		log.Println("removed task1...")
+		s.Remove(app.PreloadCategoryCache)
+		log.Println("removed PreloadCategoryCache...")
+		s.Remove(app.PreloadThirdPartyAdCache)
+		log.Println("removed PreloadThirdPartyAdCache...")
 		s.Remove(app.PreloadAdsCache)
 		log.Println("removed preloadAdsCache...")
 		

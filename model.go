@@ -1,4 +1,4 @@
-package lib
+package main
 
 import (
 	"time"
@@ -93,7 +93,7 @@ func getDataFromMongo(app *AppService)  {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Info("== numbers of campaign_space: ", len(campaignSpaces), ", using :", time.Since(beginTimeStamp));
+	log.Warnf("== Mongodb number of campaign_space: %d, using : %v", len(campaignSpaces), time.Since(beginTimeStamp));
 	
 	//广告所属的广告计划ID
 	var allCampaignIds []string
@@ -101,7 +101,7 @@ func getDataFromMongo(app *AppService)  {
 		allCampaignIds = append(allCampaignIds, v.Ad_group_id)
 	} 	
 	campaignIds := getUniqueString(allCampaignIds)
-	log.Println("== number of unique campaign of all the campaign_space: ", len(campaignIds))
+	log.Warnf("== number of unique campaign of all the campaign_space:%d ", len(campaignIds))
 
 	var campaignBsonIds []bson.ObjectId
 	for _, id := range campaignIds {
@@ -127,7 +127,7 @@ func getDataFromMongo(app *AppService)  {
 		campaignsMap[v.Id.Hex()] = v
 	}
 
-	log.Info("== load campaign num: ", len(campaigns), ", using :", time.Since(beginTimeStamp))
+	log.Warnf("== load campaign num: ", len(campaigns), ", using :", time.Since(beginTimeStamp))
 
 
 	// 找出所有创意
@@ -156,7 +156,7 @@ func getDataFromMongo(app *AppService)  {
 		campaignCreatives[v.Id.Hex()] = v
 	}
 
-	log.Info("== load creatives num: ", len(creatives), ", using:", time.Since(beginTimeStamp))
+	log.Warnf("== load creatives num: ", len(creatives), ", using:", time.Since(beginTimeStamp))
 
 
 	/*
@@ -169,8 +169,7 @@ func getDataFromMongo(app *AppService)  {
 	var allAdsId []string
 	adsGroup := map[string][]string{}
 	adsGroupMap := map[string]bool{}
-
-
+	
 	for _, oneAds := range campaignSpaces {
 		// log.Printf("== %v, %T", oneAds, oneAds.Id.Hex())
 		oneAdsId = oneAds.Id.Hex()
@@ -215,9 +214,6 @@ func getDataFromMongo(app *AppService)  {
 		if len(oneAds.Favour_category) > 0 && !stringInSlice("15", oneAds.Favour_category) {
 			oneAds.Favour_category = append(oneAds.Favour_category, "15")
 		}
-
-		//加入全部广告ID数组
-		allAdsId = append(allAdsId, oneAdsId)
 
 		//创意
 		oneCreatives, ok := creativesMap[oneAdsCampaignId]
@@ -267,6 +263,10 @@ func getDataFromMongo(app *AppService)  {
 
 	}
 
+	// for key, value := range adsGroup {
+	// 	log.Warnf("%v : %v", key, value)
+	// }
+
 	log.Infof("=== finish adsGroup : %v, %v", len(adsGroup), len(adsGroupMap))
 
 	//先删除再设置全部广告ID缓存
@@ -276,7 +276,7 @@ func getDataFromMongo(app *AppService)  {
 	}
 	conn.Send("EXPIRE", ZK_ADS_CACHE_ALL_ADS_SET, ZK_ADS_CACHE_SINGLE_SET_KEY)
 	
-	log.Warnf("** load campaign_space num (%d) ", len(allAdsId))
+	log.Warnf("** Redis load campaign_space num (%v) ", len(allAdsId))
 
 	//处理广告属性的redis集合设置
 	for key, _ := range adsGroupMap {
@@ -288,7 +288,8 @@ func getDataFromMongo(app *AppService)  {
 		}
 		conn.Send("EXPIRE", key, ZK_ADS_CACHE_SINGLE_SET_KEY)
 	}
-
+	log.Warnf("=== Redis load cache key adsGroup : %v, %v", len(adsGroup), len(adsGroupMap))
+	
 	_, err = conn.Do("EXEC")
 	if err != nil {
 		log.Error("== redis multi exec error: ", err)
@@ -454,7 +455,7 @@ func getDataFromMongo(app *AppService)  {
 					count, ok := stat.Daily_clicks[day]; 
 					if ok == true && count > 0{
 						// log.Printf("== found click for key %v, value: %v", day, count)
-						dailyClickKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_CREATIVE_CLICK_COUNT}, ""), "cs_", 16)
+						dailyClickKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_CREATIVE_CLICK_COUNT, stat.Creative_id, "_", day}, ""), "cc_", 16)
 						adsConn.Send("SETEX", dailyClickKey, ZK_ADS_ADS_CACHE_EXPIRE, count)
 					}
 				}
@@ -863,12 +864,12 @@ func getCampaignSpaceByIds(cache Cache , ids []string) ( map[string]CampaignSpac
 
 
 //加载mysql的category到缓存
-func loadCategoryFromDbToCache(app *AppService, mysqlconnectaddr string)  {
+func loadCategoryFromDbToCache(app *AppService)  {
 
 	conn := app.cache.Pool.Get()
 	defer conn.Close()
 
-	db, err := sql.Open("mysql", mysqlconnectaddr)
+	db, err := sql.Open("mysql", app.mysqlconnectaddr)
     if err != nil {
 		panic(err)
 	}
@@ -911,7 +912,7 @@ func loadCategoryFromDbToCache(app *AppService, mysqlconnectaddr string)  {
 
 
 //加载third_party_id的广告到缓存
-func loadThirdPartyFromDbToCache(app *AppService, dbconnection string)  {
+func loadThirdPartyFromDbToCache(app *AppService)  {
 
 	//需要查询的第三方渠道ID
 	thirdPartyIds := []string{
@@ -946,7 +947,7 @@ func loadThirdPartyFromDbToCache(app *AppService, dbconnection string)  {
 	// session.SetMode(mgo.Monotonic, true)
 
 	host := []string{
-		dbconnection,
+		app.dbconnectionthird,
 	}
 	session, err := mgo.DialWithInfo(&mgo.DialInfo{
 		Addrs: host,
@@ -954,7 +955,7 @@ func loadThirdPartyFromDbToCache(app *AppService, dbconnection string)  {
 		Timeout: 15 * time.Second,
 	})
 	if err != nil {
-		fmt.Println("cannot connect to :" + dbconnection)
+		fmt.Println("cannot connect to :" + app.dbconnectionthird)
 		panic(err)
 	}
 	session.SetMode(mgo.Monotonic, true)
