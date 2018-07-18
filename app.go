@@ -90,11 +90,11 @@ func (app *AppService) StartService()  {
 
 	log.Println("== AppService:StartService... ")
 
-	go func(){
-		http.HandleFunc("/health_check", healthCheckHandler)
-		http.HandleFunc("/monit", app.Monitor)
-		http.ListenAndServe(":8080", nil)
-	}()
+	// go func(){
+	// 	http.HandleFunc("/health_check", healthCheckHandler)
+	// 	http.HandleFunc("/monit", app.Monitor)
+	// 	http.ListenAndServe(":8080", nil)
+	// }()
 
 	s := gocron.NewScheduler()
 

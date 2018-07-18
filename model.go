@@ -45,7 +45,7 @@ func getDataFromMongo(app *AppService)  {
 	adThirdParty, _ = getAdThirdPartyMapFromCache(app.cache)
 	
 	// Begin Redis Transaction
-	conn.Send("MULTI")
+	// conn.Send("MULTI")
 
 	// Get Campaign Space
 	var campaignSpaces []CampaignSpace
@@ -93,7 +93,7 @@ func getDataFromMongo(app *AppService)  {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Warnf("== Mongodb number of campaign_space: %d, using : %v", len(campaignSpaces), time.Since(beginTimeStamp));
+	log.Warnf("Mongodb number of campaign_space: (%d), using : %v", len(campaignSpaces), time.Since(beginTimeStamp));
 	
 	//广告所属的广告计划ID
 	var allCampaignIds []string
@@ -101,7 +101,7 @@ func getDataFromMongo(app *AppService)  {
 		allCampaignIds = append(allCampaignIds, v.Ad_group_id)
 	} 	
 	campaignIds := getUniqueString(allCampaignIds)
-	log.Warnf("== number of unique campaign of all the campaign_space:%d ", len(campaignIds))
+	log.Warnf("Number of unique campaign of all the campaign_space: (%d) ", len(campaignIds))
 
 	var campaignBsonIds []bson.ObjectId
 	for _, id := range campaignIds {
@@ -127,7 +127,7 @@ func getDataFromMongo(app *AppService)  {
 		campaignsMap[v.Id.Hex()] = v
 	}
 
-	log.Warnf("== load campaign num: ", len(campaigns), ", using :", time.Since(beginTimeStamp))
+	log.Warnf("Load campaign num: (%v) , using : %v", len(campaigns), time.Since(beginTimeStamp))
 
 
 	// 找出所有创意
@@ -156,7 +156,7 @@ func getDataFromMongo(app *AppService)  {
 		campaignCreatives[v.Id.Hex()] = v
 	}
 
-	log.Warnf("== load creatives num: ", len(creatives), ", using:", time.Since(beginTimeStamp))
+	log.Warnf("Load creatives num: (%v) , using: (%v)", len(creatives), time.Since(beginTimeStamp) )
 
 
 	/*
@@ -276,7 +276,7 @@ func getDataFromMongo(app *AppService)  {
 	}
 	conn.Send("EXPIRE", ZK_ADS_CACHE_ALL_ADS_SET, ZK_ADS_CACHE_SINGLE_SET_KEY)
 	
-	log.Warnf("** Redis load campaign_space num (%v) ", len(allAdsId))
+	log.Warnf("Redis load campaign_space num (%v) ", len(allAdsId))
 
 	//处理广告属性的redis集合设置
 	for key, _ := range adsGroupMap {
@@ -288,12 +288,17 @@ func getDataFromMongo(app *AppService)  {
 		}
 		conn.Send("EXPIRE", key, ZK_ADS_CACHE_SINGLE_SET_KEY)
 	}
-	log.Warnf("=== Redis load cache key adsGroup : %v, %v", len(adsGroup), len(adsGroupMap))
+	log.Warnf("Redis load cache key adsGroup : %v, %v", len(adsGroup), len(adsGroupMap))
 	
-	_, err = conn.Do("EXEC")
+	_, err = conn.Do("")
 	if err != nil {
-		log.Error("== redis multi exec error: ", err)
+		log.Errorln("Pipeline ads err:", err)
 	}
+
+	// _, err = conn.Do("EXEC")
+	// if err != nil {
+	// 	log.Error("=295= redis multi exec error: ", err)
+	// }
 	log.Info("== redis multi exec command finished" )
 
 
@@ -312,7 +317,7 @@ func getDataFromMongo(app *AppService)  {
 	
 
 	// Begin Redis Transaction
-	adsConn.Send("MULTI")
+	// adsConn.Send("MULTI")
 
 	//更新广告的曝光数和点击数
 	c = session.DB("zk_ads_stat").C("ads_action_stat")
@@ -324,7 +329,7 @@ func getDataFromMongo(app *AppService)  {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Warnf("** get ads stat num (%v)", len(adsStats))
+	log.Warnf("Get ads stat num (%v)", len(adsStats))
 
 	if len(adsStats) > 0 {
 		for _, stat := range adsStats {
@@ -334,14 +339,12 @@ func getDataFromMongo(app *AppService)  {
 			if stat.Show_count > 0 {
 				log.Debugf("set ad_id:%s show:%v", stat.Ads_id, stat.Show_count)									
 				showCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_SHOW_COUNT,stat.Ads_id},""), "as_", 16)
-				adsConn.Send("SET", showCacheKey, stat.Show_count)
-				adsConn.Send("EXPIRE", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+				adsConn.Send("SETEX", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, stat.Show_count)
 			}
 			if stat.Click_count > 0 {
 				log.Debugf("set ad_id:%s click:%v", stat.Ads_id, stat.Click_count)													
 				clickCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_CLICK_COUNT,stat.Ads_id},""), "ac_", 16)
-				adsConn.Send("SET", clickCacheKey, stat.Click_count)
-				adsConn.Send("EXPIRE", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+				adsConn.Send("SETEX", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, stat.Click_count)
 			}
 		}
 	}
@@ -366,14 +369,12 @@ func getDataFromMongo(app *AppService)  {
 			if stat.Show_count > 0 {
 				log.Debugf("set campaign_id:%s show:%v", stat.Ads_id, stat.Show_count)
 				showCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_SHOW_COUNT,stat.Ads_id},""), "as_", 16)
-				adsConn.Send("SET", showCacheKey, stat.Show_count)
-				adsConn.Send("EXPIRE", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+				adsConn.Send("SETEX", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, stat.Show_count)
 			}
 			if stat.Click_count > 0 {
 				log.Debugf("set campaign_id:%s click:%v", stat.Ads_id, stat.Show_count)				
 				clickCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_CLICK_COUNT,stat.Ads_id},""), "ac_", 16)
-				adsConn.Send("SET", clickCacheKey, stat.Click_count)
-				adsConn.Send("EXPIRE", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+				adsConn.Send("SETEX", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, stat.Click_count)
 			}
 
 			if len(stat.Daily_shows) > 0 {
@@ -381,8 +382,7 @@ func getDataFromMongo(app *AppService)  {
 				if ok == true && todayShow > 0 {
 					log.Debugf("set campaign_id:%s daily_show:%v", stat.Ads_id, stat.Show_count)					
 					showCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_SHOW_COUNT,stat.Ads_id,"_",todayDateFormat}, ""), "as_", 16)
-					adsConn.Send("SET", showCacheKey, todayShow)
-					adsConn.Send("EXPIRE", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+					adsConn.Send("SETEX", showCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, todayShow)
 				}
 			}
 			if len(stat.Daily_clicks) > 0 {
@@ -390,8 +390,7 @@ func getDataFromMongo(app *AppService)  {
 				if ok == true && todayClick > 0 {
 					log.Debugf("set campaign_id:%s daily_click:%v", stat.Ads_id, stat.Show_count)										
 					clickCacheKey := adsCacheGetKey(strings.Join([]string{ZK_ADS_CACHE_ADS_CLICK_COUNT,stat.Ads_id,"_",todayDateFormat}, ""), "ac_", 16)				
-					adsConn.Send("SET", clickCacheKey, todayClick)
-					adsConn.Send("EXPIRE", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE)
+					adsConn.Send("SETEX", clickCacheKey, ZK_ADS_ADS_CACHE_EXPIRE, todayClick)
 				}
 			}
 		}
@@ -407,7 +406,7 @@ func getDataFromMongo(app *AppService)  {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Warnf("** load creatives stat (%v)", len(creativeStats))
+	log.Warnf("Load creatives stat (%v)", len(creativeStats))
 
 	if len(creativeStats) > 0 {
 
@@ -459,7 +458,7 @@ func getDataFromMongo(app *AppService)  {
 						adsConn.Send("SETEX", dailyClickKey, ZK_ADS_ADS_CACHE_EXPIRE, count)
 					}
 				}
-			}
+			}	
 		}
 	}
 
@@ -484,13 +483,25 @@ func getDataFromMongo(app *AppService)  {
 		adsConn.Send("SETEX", strings.Join([]string{advCacheKey, adv.Id.Hex()}, ""), 86400, oneAdvJson)
 	}
 	
-	// 批量执行
-	_, err = adsConn.Do("EXEC")
+	log.Warnf("Load advertiser num (%d)", len(advertisers))
+	
+	// adsConn.Flush()
+	// v, err := adsConn.Receive()
+	// log.Warnln("pipeline result:", v)
+
+	_, err = adsConn.Do("")
 	if err != nil {
-		log.Error("== redis multi exec error: ", err)
+		log.Errorln("Pipeline ads_cache err:", err)
 	}
 
-	log.Warnf("** load advertiser num (%d)", len(advertisers))
+	log.Warnln("Pipeline ads_cache ok!")
+
+	// 批量执行
+	// _, err = adsConn.Do("EXEC")
+	// if err != nil {
+	// 	log.Error("=490= redis multi exec error: ", err)
+	// }
+
 
 	log.Debugf("== redis multi exec command finished" )
 
@@ -775,7 +786,7 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 	// EXEC Transaction
 	_, err = conn.Do("EXEC")
 	if err != nil {
-		log.Error("== redis multi exec error: ", err)
+		log.Error("=778= redis multi exec error: ", err)
 		return err
 	}
 
