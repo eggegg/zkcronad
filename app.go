@@ -114,7 +114,7 @@ func (app *AppService) StartService()  {
 	// 同步广告计划的worker
 	go SyncAdJob(cancelChan, numberOfWorkers, app.cache, app.session, ZK_ADS_SYNC_CAMPAIGN_QUEUE)
 	// 同步广告主的worker
-	go SyncAdJob(cancelChan, 1, app.cache, app.session, ZK_ADS_SYNC_ADVERTISER_QUEUE)
+	go SyncAdJob(cancelChan, 1, app.adsCache, app.session, ZK_ADS_SYNC_ADVERTISER_QUEUE)
 	
 	// 接受终端停止信号
 	stop := false

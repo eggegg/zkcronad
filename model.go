@@ -662,7 +662,7 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 		
 
 	// Begin Redis Transaction
-	conn.Send("MULTI")
+	// conn.Send("MULTI")
 
 	// loop all the campaign spaces
 	for _, oneAds := range campaignSpaces {
@@ -736,6 +736,7 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 		oneAdsJson, err := json.Marshal(oneAds)	
 		if err != nil {
 			log.Error("== failed encode json of campaign_id:", oneAdsId)
+			return err
 		}			
 		oneAdsRedisKey := strings.Join([]string{ZK_ADS_CACHE_SINGLE_ADS_DEF, oneAdsId}, "")			
 
@@ -784,9 +785,9 @@ func syncByCampaignId(cache Cache, session *mgo.Session, uuid string, workerId i
 	}
 
 	// EXEC Transaction
-	_, err = conn.Do("EXEC")
+	_, err = conn.Do("")
 	if err != nil {
-		log.Error("=778= redis multi exec error: ", err)
+		log.Errorln("pipeline syncByCampaignId error: ", err)
 		return err
 	}
 
@@ -827,10 +828,14 @@ func syncByAdvertiserId(cache Cache, session *mgo.Session, uuid string, workerId
 
 	advCacheKey := strings.Replace(ZK_DSP_CACHE_ADVERTISER_DATA, "{id}", "", 1)
 	oneAdvJson, err := json.Marshal(advertiser)
+	if err != nil {
+		log.Warnln("Json format error advertiser_id:", uuid)
+		return err
+	}
 
 	_, err = conn.Do("SETEX", strings.Join([]string{advCacheKey, advertiser.Id.Hex()}, ""), 86400, oneAdvJson)
 	if err != nil {
-		log.Error(err)
+		log.Errorln("Redis set advertiser fail advertiser_id:", uuid)
 		return err
 	}
 
